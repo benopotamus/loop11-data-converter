@@ -1,50 +1,60 @@
 #!/usr/bin/env python3
 
 import csv, re, sqlite3, sys
+from os.path import isfile
+import dateparser #http://dateparser.readthedocs.io/en/latest/
 
 
 def main():
 	conn = sqlite3.connect(DB_NAME)
 	c = conn.cursor()
 
+	# Drop tables if file exists
+	if isfile(DB_NAME):
+		c.execute('''DROP TABLE participants''')
+		c.execute('''DROP TABLE tasks''')
+		c.execute('''DROP TABLE questions''')
+		c.execute('''DROP TABLE task_response''')
+		c.execute('''DROP TABLE question_response''')
+
 	# Create table
 	c.execute('''CREATE TABLE participants (
-	             number INTEGER,
-	             customid TEXT,
-	             ipaddress TEXT,
-	             xl_date_start STRING,
-	             xl_date_end STRING,
-	             sqlite_date_start STRING,
-	             sqlite_date_end STRING,
-	             user_agent TEXT,
-	             total_time REAL,
-	             avg_time REAL,
-	             ave_page_views REAL
-	             )''')
+				number INTEGER,
+				customid TEXT,
+				ipaddress TEXT,
+				xl_date_start STRING,
+				xl_date_end STRING,
+				sqlite_date_start STRING,
+				sqlite_date_end STRING,
+				user_agent TEXT,
+				total_time REAL,
+				avg_time REAL,
+				ave_page_views REAL
+				)''')
 
 	c.execute('''CREATE TABLE tasks (
-	             number INTEGER,
-	             name TEXT
-	             )''')
+				number INTEGER,
+				name TEXT
+				)''')
 
 	c.execute('''CREATE TABLE questions (
-	             main TEXT,
-	             sub TEXT
-	             )''')
+				main TEXT,
+				sub TEXT
+				)''')
 
 	c.execute('''CREATE TABLE task_response (
-				 participantid INTEGER REFERENCES participants(rowid) ON UPDATE CASCADE ON DELETE CASCADE,
-				 questionid INTEGER	REFERENCES tasks(rowid) ON UPDATE CASCADE ON DELETE CASCADE,
-	             result TEXT,
-	             page_views INTEGER,
-	             time INTEGER
-	             )''')
+				participantid INTEGER REFERENCES participants(rowid) ON UPDATE CASCADE ON DELETE CASCADE,
+				questionid INTEGER	REFERENCES tasks(rowid) ON UPDATE CASCADE ON DELETE CASCADE,
+				result TEXT,
+				page_views INTEGER,
+				time INTEGER
+				)''')
 
 	c.execute('''CREATE TABLE question_response (
-				 participantid INTEGER REFERENCES participants(rowid) ON UPDATE CASCADE ON DELETE CASCADE,
-				 questionid INTEGER	REFERENCES questions(rowid) ON UPDATE CASCADE ON DELETE CASCADE,
-	             answer TEXT
-	             )''')
+				participantid INTEGER REFERENCES participants(rowid) ON UPDATE CASCADE ON DELETE CASCADE,
+				questionid INTEGER	REFERENCES questions(rowid) ON UPDATE CASCADE ON DELETE CASCADE,
+				answer TEXT
+				)''')
 
 	conn.commit()
 
@@ -66,43 +76,22 @@ def main():
 		return dt.replace(',','')
 
 	def get_timestamp(dt):
-		'''Returns a datetime in SQLite format (a specially formatted string)
+		'''Returns a datetime in iso format
+
+		2016-03-09T13:36:00
 
 		Intended usage is sorting and filtering using SQL queries'''
-		dt = dt.split(', ')
+		return dateparser.parse(dt).isoformat()
 
-		#t = dt[0].split(':')
-		d = dt[1].split(' ')
 
-		if d[1] == 'Jan':
-			d[1] = 0
-		elif d[1] == 'Feb':
-			d[1] = 1
-		elif d[1] == 'Mar':
-			d[1] = 2
-		elif d[1] == 'Apr':
-			d[1] = 3
-		elif d[1] == 'May':
-			d[1] = 4
-		elif d[1] == 'Jun':
-			d[1] = 5
-		elif d[1] == 'Jul':
-			d[1] = 6
-		elif d[1] == 'Aug':
-			d[1] = 7
-		elif d[1] == 'Sep':
-			d[1] = 8
-		elif d[1] == 'Oct':
-			d[1] = 9
-		elif d[1] == 'Nov':
-			d[1] = 10
-		elif d[1] == 'Dec':
-			d[1] = 11
 
-		d[1] = str(d[1])
-
-		return '-'.join(d) + ' ' + dt[0]
-
+	# Work out which row the column headers / questions start on
+	# Determine sub-question header row based on this too
+	for row_number, row_value in enumerate(raw_data):
+		if row_value[0] == 'Participant No.':
+			qheaders = raw_data[row_number]
+			sqheaders = raw_data[row_number+1]
+			break
 
 
 	# Determine which columns have the tasks and questions
@@ -114,8 +103,8 @@ def main():
 
 	# Start from the 10th column becaue the first 9 are the participants details
 	i = 9
-	while i < len(raw_data[3]):
-		column = raw_data[3][i]
+	while i < len(qheaders):
+		column = qheaders[i]
 
 		# If this is a task column - get the values
 		#
@@ -143,40 +132,45 @@ def main():
 		else:
 			# Must be a question
 			# Some questions have multiple columns of answers
+			# pos is the column number the question starts on, endpos is where it ends (to allow for multi-common questions)
+			# We initially set the endpos for every question as the last column in the data,
+			#   and rely on the last_question code to overwrite it (it won't overrwite the last column)
 			if column is not '':
 
 				questions.append({
 					'name': column,
 					'pos': i,
-
-					# Every question has a 'Response' subquestion
-					'subs': [{
-						'name': 'Response',
-						'pos': i
-					}]
+					'endpos': len(qheaders),
+					'subs': []
 				})
+
+				# The previous questions end position is the pos before this one's start
+				# Set that end position
+				# Try statement handles when this is the first question
+				try:
+					last_question = questions[-2]
+					last_question['endpos'] = i
+				except IndexError:
+					pass
 
 			i = i + 1
 
 
-	# Start from the 'pos' of the first question
-	question_num = 0
-
-
-	for index, column in enumerate(raw_data[4][questions[0]['pos']:], questions[0]['pos']):
-
-		# Move onto next question every time we find a 'Response' column
-		# This column is always the first subquestion for a question
-		if column == 'Response':
-			question_num = question_num + 1 # Next question!
-		else:
-			question = questions[question_num]
-
+	# Get sub-questions by using start and end positions for questions to pick the headings out of the original data set
+	for question in questions:
+		for subq in range(question['pos'], question['endpos']):
 			question['subs'].append({
-				'name': column,
-				'pos': index
+				'name': sqheaders[subq],
+				'pos': subq
 			})
 
+	# DEBUG
+	for q in questions:
+		print('question: pos=' + str(q['pos']))
+		for sq in q['subs']:
+			print('sub-question: pos=' + str(sq['pos']))
+
+	print(tasks)
 
 
 	### Create tasks and questions in db
@@ -271,11 +265,11 @@ if __name__ == '__main__':
 			if len(sys.argv) == 2:
 				FILE_NAME = sys.argv[1]
 		except NameError:
-			print('usage: convert-loop11-csv.py --csv=[file] [--db==[file]]\n\ncsv is input, db is output database')
+			print('usage: convert-loop11-csv.py --csv=[file] [--db==[file]]\n\ncsv is input, db is output database\n')
 
 
 	if help or len(sys.argv) < 2:
-		print('usage: convert-loop11-csv.py --csv=[file] [--db==[file]]\n\ncsv is input, db is output database')
+		print('usage: convert-loop11-csv.py --csv=[file] [--db==[file]]\n\ncsv is input, db is output database\n')
 	else:
 
 		# If filename has been worked out, but not the db name, make the db name the same as file name
