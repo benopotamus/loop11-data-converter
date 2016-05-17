@@ -164,14 +164,6 @@ def main():
 				'pos': subq
 			})
 
-	# DEBUG
-	for q in questions:
-		print('question: pos=' + str(q['pos']))
-		for sq in q['subs']:
-			print('sub-question: pos=' + str(sq['pos']))
-
-	print(tasks)
-
 
 	### Create tasks and questions in db
 	for task in tasks:
@@ -275,8 +267,5 @@ if __name__ == '__main__':
 		# If filename has been worked out, but not the db name, make the db name the same as file name
 		if FILE_NAME and not DB_NAME:
 			DB_NAME = FILE_NAME[:-4] + '.db'
-
-		print(FILE_NAME)
-		print(DB_NAME)
 
 		main()
