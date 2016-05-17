@@ -21,3 +21,8 @@ All data from the CSV file is loaded into 5 tables:
   - task_response
 
 participants are joined to questions and tasks via the *response tables
+
+## add-usertype-to-db
+Code for adding inserting a usertype column into the participants table based on a prepared csv file.
+
+Usage `add-usertype-to-db.py --csv=[file] --db==[file]`
