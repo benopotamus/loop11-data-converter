@@ -2,11 +2,9 @@
 Converts a Loop11 data set (CSV) into an SQLite database
 
 ## Dependencies
-dateparser
+Python 3
 
-Install with: `pip install dateparser`
-
-See docs for more info: http://dateparser.readthedocs.io/en/latest/
+dateparser `pip install dateparser`. See docs for more info http://dateparser.readthedocs.io/en/latest/
 
 ## Usage
 `convert-loop11-csv.py --csv=[file] [--db==[file]]`
